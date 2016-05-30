@@ -1,0 +1,218 @@
+---
+title: 'Machine Learning Project : Human Activity Recognition'
+author: "dd1947in"
+date: "Sunday, May 29, 2016"
+output: html_document
+---
+### Objective  
+
+  The objective of this report is to develop  machine learning algorithms, train  models , compute  accuracy of the models. Use the most accurate model to predict and answer the  quiz questions that accompanied this project.  The requirment of answering quiz questions demands the use of the known accurate models irrespective of other drawbacks.  
+  
+  
+  Models Used for this project:  
+  
+* Generalized Boosted Regression Modeling  (caret package)
+* Classification and Regression with Random Forest (caret package, and randomForest package) 
+
+  We are required to predict Human Position from 5 "classes" A, B, C, D, E (column classe in training set) based on the data collected from serveral sensors/accelerometers. The details of the study and results are available in the following section.
+  
+  As confirmed by the quiz test results, both models have produced the 100% correct predictions for the quiz test.
+    
+  
+### Background  
+
+  Human Activity Recognition (HAR) is now possible with the help of cheap wearable devices . The availability of these weareables has triggered an exponential growth of research in this field.  
+  
+  The research in this field offers potential for improvemtns in human health, behavior,  healthcare, and elder care, weight loss, digital assistants etc.  
+  
+  
+  The data for this project comes from this source: http://groupware.les.inf.puc-rio.br/har .  Thanks to the authors of study for their research and making the data available  for our  course and project report.  Original Research Source:  
+     
+     Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.  
+     
+
+Read more @ URL : [http://groupware.les.inf.puc-rio.br/har#ixzz4A4NRKWMG](http://groupware.les.inf.puc-rio.br/har#ixzz4A4NRKWMG)
+
+### Data  
+
+  The training data for this project are available here:  
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv  
+The test data are available here:  
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv  
+
+  This project refers to "pml-testing.csv" as prediction data set.  pml-training.csv is partitioned into training, and testing data sets. These are used for training the models, and for cross validation, accuracy computation,  and Confusion Matrix.
+  
+### Model Selection Criteria  
+
+  One of the important requirments of this project is to answer a quiz accurately at the end of completion of the project. The quiz consisted of predicticting "classe" for 20 records in pml-testing.csv. I have decided to use Boosting with "gbm" and Random Forest models because of the algorithms known very high accuracy. I hoped that these two models will give the same  predictions for the quiz set. The time taken for training was very long and I had to restrict to just two methods. Also, the quiz requires a model with an accuracy greate than  .995 to predict 20 quiz question correctly as explained at course related URL https://github.com/lgreski/datasciencectacontent/blob/master/markdown/pml-requiredModelAccuracy.md 
+  
+### Methodology  
+
+  The two data sets  pml-training.csv , and pml-testing.csv (prediction data set) are made available for this project report .We will refer to   pml-testing.csv as prediction data set to avoid confusion , as we will be predicting "classe"  using this data set. Here is the high level view of the process followed.  
+  
+  
+* Load the data sets.  
+* Clean up the pml-testing.csv (prediction data set) , and drop columns that are not measurements, and also drop all columns with "NA" values.  
+* Clean up the pml-training.csv and select  columns as in prediction set.  The column "classe" will correspond to the position of "problem_id" in prediction set.  
+* Clean up the pml-training.csv  and drop columns with "NA" values if any.  
+* Finally, clean up the pml-testing.csv or prediction set and  restrict columns to match columns in pml-training.csv. The column "problem_id" matches the position of "classe" .  
+* Partition  the pml-training.csv set into df_training (75%), and df_testing(25%).  
+* Use df_training in training , and use df_testing in Prediction and cross validation. Also compute Confusion matrices.  
+* Prepare plots and important variables  charts .  
+* Use the trained models and prediction data set to predict and answer the quiz.  
+
+
+## Code and Results  
+
+
+```{r echo=TRUE}
+#For Reproducibility
+set.seed(1234567890)
+#Please ignore, suppressing ggplot warnings
+options(warn=-1)
+
+#library(dplyr)
+library(randomForest)
+library(lattice)
+library(ggplot2)
+library(caret)
+#library(gbm)
+
+#Print the Session Information for Reproducibility
+sessionInfo()
+
+
+df_pml_train_raw <- read.csv("pml-training.csv", header = TRUE, na.strings = "NA");
+df_pml_predict_raw <- read.csv("pml-testing.csv", header = TRUE, na.strings = "NA");
+
+##Remove columns that are not measurements : column 1:7 are not measurements
+df_pml_train_1 <- df_pml_train_raw[,8:160];# including last column "classe"
+df_pml_predict_1 <- df_pml_predict_raw[,8:160]; # including last column "problem_id"
+
+#Clean up df_pml_predict_1 set and remove all NA columns
+na_cols <-  sapply(df_pml_predict_1, function(x) {  any(is.na(x)) })
+df_pml_predict_2 <- df_pml_predict_1[, !na_cols]
+
+
+cols_predict <- colnames(df_pml_predict_2)
+cols_train <- c(cols_predict[1:length(cols_predict)-1], "classe")  
+# "classe"" is added in place of "problem_id""
+
+#Clean up df_pml_train_1
+#Select the same columns as predict + classe
+df_pml_train_1 <- df_pml_train_1[, cols_train]
+
+#Remove any columns with "NA" values
+na_cols <-  sapply(df_pml_train_1, function(x) {  any(is.na(x)) })
+df_pml_train_2 <- df_pml_train_1[, !na_cols]  # Remove columns with NA
+cols_train <- colnames(df_pml_train_2)
+
+#Re-compute cols_predict based on the columns in clean train set
+cols_predict <- c(cols_predict[1:length(cols_train)-1], "problem_id")
+
+#Ensure, predict set contains the same set of predictors/columns as train set.
+#Please note "problem_id" takes the place of "classe"  that we will be predicting.
+#Super clean data sets for next steps
+df_pml_predict <- df_pml_predict_2[,cols_predict]
+df_pml_train <- df_pml_train_2[,cols_train]
+```
+
+### Clean Prediction Set Columns
+```{r echo=TRUE}
+print(colnames(df_pml_predict))
+```
+
+### Clean Training Set Columns
+```{r echo=TRUE}
+print(colnames(df_pml_train))
+```
+
+###  Partition Training Set into Training and Testing Sets
+```{r echo=TRUE}
+#Partition the df_pml_train into training and testing sets.
+# create training and test sets
+in_training <- createDataPartition(y = df_pml_train$classe, p = 0.75, list = FALSE)
+# partition into training and testint sets 75% for training, and 25% for testing
+df_training <- df_pml_train[in_training, ]
+df_testing <- df_pml_train[-in_training, ]
+
+```
+
+
+### Train the models
+```{r echo=TRUE}
+#Fit All Models
+#Random Forest Training using caret package takes 2+ hours
+#mod_rf <- train(classe ~ ., method="rf", data=df_training, verbose=FALSE, prox=TRUE)
+
+#Direct Use of randomForest (without caret::train) was extremely fast and has higher accuracy
+mod_rf <- randomForest(classe ~ . , data  = df_training)
+#Generalized Boosting Model takes ~ 2 hours
+mod_boost_gbm <- train(classe ~ ., method="gbm", data=df_training, verbose=FALSE)
+
+#mod_boost_mboost <- train(classe ~ ., method="mboost", data=df_training, verbose=FALSE)
+#mod_boost_ada <- train(classe ~ ., method="ada", data=df_training, verbose=FALSE)
+#mod_boost_gamBoost <- train(classe ~ ., method="gamBoost", data=df_training, verbose=FALSE)
+
+```
+
+
+### Random Forest method : Testing, and  Confusion Matrix 
+```{r echo=TRUE}
+########Predict with mod_rf
+pred_testing_rf <- predict(mod_rf, newdata=df_testing)
+cm_rf <- confusionMatrix(pred_testing_rf, df_testing$classe)
+print(cm_rf)
+```
+### Random Forest method : Error Vs Trees
+```{r echo=TRUE}
+
+plot(mod_rf, main = "Error vs Trees", color=class)
+```
+  
+  
+
+### Random Forest method : Important variables
+
+```{r echo=TRUE}
+varImpPlot(mod_rf, main="Dotchart of Variable Importance")
+
+
+
+```
+
+### Generalized Boosting Modeling method : Testing,  and  Confusion Matrix
+```{r echo=TRUE}
+pred_testing_boost_gbm <- predict(mod_boost_gbm, newdata=df_testing)
+cm_boost_gbm <- confusionMatrix(pred_testing_boost_gbm, df_testing$classe)
+print(cm_boost_gbm)
+```
+### Generalized Boosting Modeling method : Accuracy(Bootstrap) vs Boosting Iterations
+```{r echo=TRUE}
+plot(mod_boost_gbm, main="Accuracy vs Boosting Iterations", color=class)
+```
+
+### Random Forest method : Prediction, and  Quiz Responses
+```{r echo=TRUE}
+pred_predict_rf <- predict(mod_rf, newdata=df_pml_predict) # Note predict data set
+print(pred_predict_rf)
+
+```
+
+### Generalized Boosting Modeling method : Prediction, and  Quiz Responses
+```{r echo=TRUE}
+pred_predict_boost_gbm <- predict(mod_boost_gbm, newdata=df_pml_predict)
+print(pred_predict_boost_gbm)
+
+```
+
+
+### Conclusions  
+
+* Both methods RF and GBM have produced the same and correct predictions for the quiz . This was confirmed by the quiz test.
+* RF method had an Accuracy : 0.9967, and GBM method had Accuracy : 0.9643 .
+* Training with caret package is extremely slow and took approximately 2 hours for each training . Wish there are parameters to make it run faster  . 
+* Training with randomForest is faster .
+
+
+
